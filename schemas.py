@@ -1,48 +1,69 @@
 """
-Database Schemas
+Database Schemas for MediCare Plus
 
-Define your MongoDB collection schemas here using Pydantic models.
-These schemas are used for data validation in your application.
+Each Pydantic model represents a MongoDB collection. The collection name is the
+lowercase of the class name (e.g., User -> "user").
 
-Each Pydantic model represents a collection in your database.
-Model name is converted to lowercase for the collection name:
-- User -> "user" collection
-- Product -> "product" collection
-- BlogPost -> "blogs" collection
+These schemas are used for request/response validation and for the Flames DB viewer.
 """
 
-from pydantic import BaseModel, Field
-from typing import Optional
+from pydantic import BaseModel, Field, EmailStr
+from typing import Optional, List, Literal
+from datetime import datetime
 
-# Example schemas (replace with your own):
-
+# Core users
 class User(BaseModel):
-    """
-    Users collection schema
-    Collection name: "user" (lowercase of class name)
-    """
     name: str = Field(..., description="Full name")
-    email: str = Field(..., description="Email address")
-    address: str = Field(..., description="Address")
-    age: Optional[int] = Field(None, ge=0, le=120, description="Age in years")
+    email: EmailStr = Field(..., description="Unique email address")
+    password_hash: str = Field(..., description="BCrypt password hash")
+    role: Literal["admin", "doctor", "patient"] = Field("patient", description="User role")
     is_active: bool = Field(True, description="Whether user is active")
 
-class Product(BaseModel):
-    """
-    Products collection schema
-    Collection name: "product" (lowercase of class name)
-    """
-    title: str = Field(..., description="Product title")
-    description: Optional[str] = Field(None, description="Product description")
-    price: float = Field(..., ge=0, description="Price in dollars")
-    category: str = Field(..., description="Product category")
-    in_stock: bool = Field(True, description="Whether product is in stock")
+class Doctorprofile(BaseModel):
+    user_id: str = Field(..., description="Reference to user (_id) who is a doctor")
+    specialization: str = Field(..., description="Medical specialization, e.g., Cardiology")
+    experience_years: int = Field(..., ge=0, le=60, description="Years of experience")
+    availability: str = Field(..., description="Availability description or schedule text")
+    qualifications: List[str] = Field(default_factory=list, description="List of qualifications")
+    consultation_fee: float = Field(..., ge=0, description="Consultation charge")
+    location: str = Field(..., description="Hospital/clinic location")
+    average_rating: float = Field(0, ge=0, le=5, description="Computed average rating")
 
-# Add your own schemas here:
-# --------------------------------------------------
+# Hospital services
+class Service(BaseModel):
+    category: str = Field(..., description="E.g., Cardiology, Pediatrics, Radiology")
+    name: str = Field(..., description="Service name")
+    description: Optional[str] = Field(None, description="Detailed description")
 
-# Note: The Flames database viewer will automatically:
-# 1. Read these schemas from GET /schema endpoint
-# 2. Use them for document validation when creating/editing
-# 3. Handle all database operations (CRUD) directly
-# 4. You don't need to create any database endpoints!
+# Appointments
+class Appointment(BaseModel):
+    patient_id: str = Field(..., description="Reference to patient user _id")
+    doctor_id: str = Field(..., description="Reference to doctor user _id")
+    service_id: Optional[str] = Field(None, description="Reference to service _id")
+    starts_at: datetime = Field(..., description="Appointment start datetime (ISO)")
+    status: Literal["pending", "confirmed", "completed", "cancelled"] = Field("pending")
+    notes: Optional[str] = Field(None, description="Optional patient notes")
+
+# Secure messages
+class Message(BaseModel):
+    from_user_id: str = Field(..., description="Sender user _id")
+    to_user_id: str = Field(..., description="Recipient user _id")
+    content: str = Field(..., description="Message content")
+    appointment_id: Optional[str] = Field(None, description="Related appointment _id")
+
+# Ratings & feedback
+class Rating(BaseModel):
+    patient_id: str = Field(..., description="Patient user _id")
+    doctor_id: str = Field(..., description="Doctor user _id")
+    appointment_id: Optional[str] = Field(None, description="Related appointment _id")
+    rating: int = Field(..., ge=1, le=5, description="Star rating (1-5)")
+    review: Optional[str] = Field(None, description="Textual feedback")
+
+# Medical reports metadata (files would be stored externally; we keep links)
+class Report(BaseModel):
+    patient_id: str = Field(..., description="Patient user _id")
+    doctor_id: str = Field(..., description="Doctor user _id")
+    report_type: str = Field(..., description="e.g., Lab Test, Prescription, Visit Summary")
+    title: str = Field(..., description="Human-friendly title")
+    url: Optional[str] = Field(None, description="Public or signed URL to file")
+    content: Optional[str] = Field(None, description="Optional embedded text content if no URL")
